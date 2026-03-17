@@ -24,7 +24,7 @@ Then open two separate Claude chats. In each ask: `use make_move to play tic-tac
 
 ## How it works
 
-`make_move(move)` places your mark, **hangs** (SSE stream open) until the opponent moves, returns their move. No database - game state lives in RAM.
+`make_move(move)` places your mark, **hangs** (SSE stream open) until the opponent moves, returns their move. No database - game state lives in RAM. Locally, MCP `Session-Id` identifies each player (X vs O).
 
 ```
                               -> time ->
