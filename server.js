@@ -34,6 +34,7 @@ export function createGame(sid) {
   return { board: emptyBoard(), xSid: sid, oSid: null, turn: "X", finished: false };
 }
 
+// Identify player by MCP Session-Id (local server only, Cloudflare uses turn order)
 export function assignPlayer(game, sid) {
   if (!game) return null;
   if (sid === game.xSid) return "X";
@@ -99,6 +100,7 @@ if (typeof caches === "undefined") {
         if (r.err) { game = null; return txt(r.err); }
         game.board = r.board;
         game.turn = "O";
+        // Ping-pong: hang here (SSE open) until opponent moves, then return their move
         game.waiter = waitForOpponent(heartbeat);
         const oppMove = await game.waiter.promise;
         if (!oppMove) { game = null; return txt("Opponent didn't respond in time. Game abandoned."); }
