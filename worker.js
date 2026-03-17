@@ -1,7 +1,7 @@
-// MCP-to-MCP TicTacToe — Cloudflare Worker + Single Durable Object
-// ONE DO instance ("lobby") handles ALL players. Stateless MCP per request.
-// Polling via setTimeout yields to event loop — other player's request gets processed.
-// Note: stateless PoC — no stable player identity, turn-based assignment.
+// MCP-to-MCP TicTacToe - Cloudflare Worker + Single Durable Object
+// ONE Durable Object instance ("lobby") handles ALL players.
+// Stateless MCP per request (SDK can't reuse McpServer across transports).
+// Note: stateless PoC - no stable player identity, turn-based assignment.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
@@ -12,6 +12,8 @@ const CLEANUP_MS = 10_000;
 const POLL_MS = 500;
 const MAX_WAIT_MS = 300_000;
 
+// Durable Object = tiny managed server (persistent single-threaded process with RAM)
+// All requests route here via idFromName("lobby") - both players share this.game
 export class GameRoom {
   constructor() { this.game = null; }
 
@@ -21,6 +23,10 @@ export class GameRoom {
     setTimeout(() => { if (this.game?.finished) this.game = null; }, CLEANUP_MS);
   }
 
+  // Polling loop: await setTimeout yields to the event loop, letting the other
+  // player's request run on the same single thread. When they modify this.game,
+  // the next poll tick sees the change. Promises don't cross Durable Object
+  // boundaries - that's why we poll instead of using Promise-based waiting.
   async waitForOpponent(expectedCount, heartbeatFn) {
     const start = Date.now();
     let hb = 0;
@@ -28,7 +34,7 @@ export class GameRoom {
       if (this.game?.finished) return this.game.lastMove;
       if (!this.game) return null;
       if (this.game.moveCount > expectedCount) return this.game.lastMove;
-      if (++hb % 8 === 0) heartbeatFn();
+      if (++hb % 8 === 0) heartbeatFn(); // SSE heartbeat keeps connection alive
       await new Promise((r) => setTimeout(r, POLL_MS));
     }
     return null;
@@ -60,6 +66,7 @@ export class GameRoom {
             return endTurn(room.game, oppMove, "X");
           }
 
+          // Turn-based assignment (stateless transport = no session IDs)
           const mark = room.game.turn;
 
           const r = place(room.game.board, move, mark);
@@ -73,7 +80,7 @@ export class GameRoom {
           const w = winner(room.game.board);
           if (w) {
             room.markFinished();
-            return txt(`Placed ${move.toUpperCase()} as ${mark}. Game over — ${formatWin(w)}\n${render(room.game.board)}`);
+            return txt(`Placed ${move.toUpperCase()} as ${mark}. Game over - ${formatWin(w)}\n${render(room.game.board)}`);
           }
 
           const oppMove = await room.waitForOpponent(count, heartbeat);
@@ -94,6 +101,7 @@ export class GameRoom {
     try {
       const body = await request.json();
       const srv = this.createMcpServer();
+      // Stateless transport: no sessions to lose between requests
       const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       await srv.connect(transport);
       return await transport.handleRequest(request, { parsedBody: body });
@@ -105,9 +113,10 @@ export class GameRoom {
   }
 }
 
+// Worker = stateless router. Forwards ALL /mcp requests to ONE Durable Object.
 export default {
   async fetch(request, env) {
-    if (new URL(request.url).pathname !== "/mcp") return new Response("MCP TicTacToe — connect at /mcp", { status: 200 });
+    if (new URL(request.url).pathname !== "/mcp") return new Response("MCP TicTacToe - connect at /mcp", { status: 200 });
     return env.GAME_ROOM.get(env.GAME_ROOM.idFromName("lobby")).fetch(request);
   },
 };
