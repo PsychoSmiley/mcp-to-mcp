@@ -1,0 +1,24 @@
+{
+  "name": "mcp-to-mcp-game",
+  "version": "1.0.0",
+  "main": "server.js",
+  "bin": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "MCP-to-MCP autonomous game server - two LLMs play games via MCP tool calls",
+  "type": "module",
+  "dependencies": {
+    "@cloudflare/agents": "^0.0.16",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "agents": "^0.7.6",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "wrangler": "^4.73.0"
+  }
+}
